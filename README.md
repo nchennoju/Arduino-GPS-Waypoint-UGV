@@ -14,4 +14,4 @@ To simplify wiring, a custom PCB was designed. The PCB has been oversized at the
 Additionally, telemetry capabilities were added to the rover for better ease in debugging while also offering users a user friendly interface to monitor the status of the UGV. The GUI dashboard was designed in python keeping in mind that the following hardware will eventually be equipped on an Aerial device. Using a recieving NRF24 radio module connected to an arduino to serialize inputs, the python GUI uses the pyserial library to extract UGV data and graphically represents it. Currently, attitude, GPS position, voltage, heading data, and PID inputs are shown.
 
 
-![GUI](https://github.com/nchennoju/Arduino-GPS-Waypoint-UGV/blob/master/Images/Screenshot%202021-05-14%20115919.jpg)
+![GUI](https://github.com/nchennoju/Arduino-GPS-Waypoint-UGV/blob/master/Images/2021-06-06.png)
