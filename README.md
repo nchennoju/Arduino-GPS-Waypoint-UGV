@@ -15,3 +15,13 @@ Additionally, telemetry capabilities were added to the rover for better ease in 
 
 
 ![GUI](https://github.com/nchennoju/Arduino-GPS-Waypoint-UGV/blob/master/Images/2021-06-06.png)
+
+
+To make this entire flight controller hardware easy to understand, I have a basic system diagram explaining everything...
+
+
+![Sys Diagram](https://github.com/nchennoju/Arduino-GPS-Waypoint-UGV/blob/master/Images/UGV%20Block%20Diagram%20v2%20(2).png)
+
+
+If you have any questions or are interested in this project, you can connect with me on linkedin: https://www.linkedin.com/in/nitish-chennoju/
+or you can view my website: http://nchennoju.github.io/
