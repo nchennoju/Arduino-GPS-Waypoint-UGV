@@ -5,7 +5,6 @@
 
 double heading(double lat1, double lon1, double lat2, double lon2);
 double distance(double lat1, double lon1, double lat2, double lon2);
-void requestEvent();
 
 #define TX_PIN 2
 #define RX_PIN 3
@@ -14,62 +13,34 @@ void requestEvent();
 #define B 7
 #define WAYPOINT_THRESHOLD 2
 #define GPSBAUD 9600
-#define COMBAUD 9600
-#define SERIALBAUD 9600
 #define DEV_NUM 7
 
+struct Data {
+  double heading;
+  double distance;
+};
 
 // ----- GPS
-const double coordinates[][2] = {{lat1, lon1}, {lat..., lon...}};
+//{{37.325742, -121.982143}};
+const double coordinates[][2] = {{37.3250377, -121.9821168}, {37.325046, -121.981990}, {37.3250377, -121.9821168}};
 int target = 0;
+
 
 TinyGPSPlus gps;
 SoftwareSerial gpsSerial(TX_PIN, RX_PIN);
-//SoftwareSerial comSerial(10, 9);
+SoftwareSerial comSerial(10, 9);
 
 double dist, h = 0;
 int thetaScaled;
 
 
 
-// WIRE TEST INITIALIZATION
-union float_byte {
-  float value;
-  byte b[4];
-};
-
-union short_byte {
-  short value;
-  byte b[2];
-};
-
-
-union float_byte distanceTo;
-union short_byte headingReq;
-union float_byte currentLat;
-union float_byte currentLon;
-union short_byte currentSpeed;
-
-// WIRE TEST END
-
-
-
 void setup() {
-
-distanceTo.value = 0;
-headingReq.value = 0;
-
-// WIRE TEST BEGIN
-Wire.begin(4);
-Wire.onRequest(requestEvent);
-
-// WIRE TEST END
-
   pinMode(R, OUTPUT);
   pinMode(G, OUTPUT);
   pinMode(B, OUTPUT);
 
-  Serial.begin(SERIALBAUD);
+  Serial.begin(9600);
   gpsSerial.begin(GPSBAUD);
   
   // CHECK NUM SATELLITES
@@ -97,9 +68,7 @@ Wire.onRequest(requestEvent);
     digitalWrite(B, LOW);
   }
 
-//comSerial.begin(COMBAUD);
-
-
+comSerial.begin(9600);
 
 }
 
@@ -110,6 +79,7 @@ void loop() {
 
   //MAIN PROGRAM HERE
   if(gpsSerial.overflow()) {
+    Serial.println("Overflow");
     gpsSerial.clearWriteError();
   }
 
@@ -122,23 +92,8 @@ void loop() {
     dist = distance(coordinates[target][0], coordinates[target][1], gps.location.lat(), gps.location.lng());
     h = heading(coordinates[target][0], coordinates[target][1], gps.location.lat(), gps.location.lng());
 
-
-
-    //WIRE TEST CODE
-    distanceTo.value = dist;
-    headingReq.value = short(h);
-    currentLat.value = gps.location.lat();
-    currentLon.value = gps.location.lng();
-    currentSpeed.value = short(gps.speed.mph());
-    // 4 byte, 1 byte, 4 byte, 1 byte (end)
-    // WIRE TEST END
-
-
-
-
-
-    Serial.println("Target: " + String(dist) + "\tDes Heading: " + String(h)+ "\t" + String(gps.satellites.value()));
-    //comSerial.print(String(int(h)) + '\t' + String(int(dist)) + '\n');  // send GPS computation to navigation unit
+    Serial.println("Distance to Target: " + String(dist) + "\tDesired Heading: " + String(h) + "\tupdated");
+    comSerial.print(String(int(h)) + '\t' + String(int(dist)) + '\n');  // send GPS computation to navigation unit
 
     digitalWrite(R, HIGH);
     digitalWrite(G, LOW);
@@ -180,6 +135,7 @@ void loop() {
     digitalWrite(R, LOW);
     digitalWrite(G, LOW);
     digitalWrite(B, LOW);
+    //Serial.print("Distance to Target: " + String(dist) + "\tDesired Heading: " + String(h));
   }
 
   delay(50);
@@ -187,17 +143,6 @@ void loop() {
   //Serial.println();
   gpsFlag = false;
 
-}
-
-void requestEvent() {
-  for (int i=0; i<4; i++)
-  {
-    Wire.write(distanceTo.b[i]);  //data bytes are queued in local buffer
-  }
-  for (int i=0; i<2; i++)
-  {
-    Wire.write(headingReq.b[i]);  //data bytes are queued in local buffer
-  }
 }
 
 double distance(double lat1, double lon1, double lat2, double lon2)

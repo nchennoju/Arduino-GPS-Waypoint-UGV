@@ -1,32 +1,21 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include <SPI.h>
-#include "C:\Users\nchen\Documents\PlatformIO\Projects\Navigation_Controller\.pio\libdeps\nanoatmega328new\PID\PID_v1.h"
-#include "C:\Users\nchen\Documents\PlatformIO\Projects\Navigation_Controller\.pio\libdeps\nanoatmega328new\Servo\src\Servo.h"
-#include "C:\Users\nchen\Documents\PlatformIO\Projects\Navigation_Controller\.pio\libdeps\nanoatmega328new\RF24\RF24.h"
+#include <SoftwareSerial.h>
+#include "C:\Users\nchen\Documents\PlatformIO\Arduino-GPS-Waypoint-UGV\Navigation_Controller\.pio\libdeps\nanoatmega328new\PID\PID_v1.h"
+#include "C:\Users\nchen\Documents\PlatformIO\Arduino-GPS-Waypoint-UGV\Navigation_Controller\.pio\libdeps\nanoatmega328new\Servo\src\Servo.h"
 
 #define Length 10
-#define FILTER 20
 #define SERVO_PIN 9
 #define ESC_PIN 6
-#define WAYPOINT_THRESHOLD_STOP 2
-#define WAYPOINT_THRESHOLD_SLOW 7
-#define COMBAUD 9600
-#define SERIALBAUD 38400
-
-// ROVER on grass
-//#define STOP 1500
-//#define SLOW 1350
-#define FAST 1300
-
-// ROVER on pavement
+#define WAYPOINT_THRESHOLD_STOP 3
+#define WAYPOINT_THRESHOLD_SLOW 10
 #define STOP 1500
-#define SLOW 1420
-//#define FAST 1400
+#define SLOW 1400
+#define FAST 1400
 
+int getAngle(char in[], int length);
+int getDistance(char in[], int length);
 void setSteering(int val);
-void setSteeringBoat(int val);
-float avgFilter(float volt);
 
 void read_mpu_6050_data();
 void calibrate_gyro();
@@ -34,8 +23,6 @@ void config_gyro();
 void read_magnetometer();
 void calibrate_magnetometer();
 void configure_magnetometer();
-
-
 
 // -----------
 // COMPASS START
@@ -96,12 +83,10 @@ float   Mag_pitch, Mag_roll;
    (4) Set "Record_data = false;" then upload & rerun program.
 */
 bool    Record_data = false;
-
-// For Rover on stand
-int     Mag_x_offset = 860,      Mag_y_offset = 97,     Mag_z_offset = 48;   // Hard-iron offsets
-float   Mag_x_scale = 1.01,     Mag_y_scale = 1.05,     Mag_z_scale = 0.95;    // Soft-iron scale factors
+// For Rover
+int     Mag_x_offset = 732,      Mag_y_offset = -72,     Mag_z_offset = -40;   // Hard-iron offsets
+float   Mag_x_scale = 1.01,     Mag_y_scale = 1.07,     Mag_z_scale = 0.93;    // Soft-iron scale factors
 float   ASAX = 1.18,            ASAY = 1.20,            ASAZ = 1.14;           // (A)sahi (S)ensitivity (A)djustment fuse ROM values.
-
 
 // ----- LED
 const int LED = 13;                     // Status LED
@@ -119,100 +104,29 @@ long Debug_start_time;
 // COMPASS END
 // -----------
 
+// SERIAL COMMUNICATION
+SoftwareSerial COM(A1, A2);
+char text[Length];
+int i = 0;
 
 // ACTUATOR INITIALIZATION
 Servo steering;
 Servo esc;
 
-int thetaScaled, angle;
-float distance;
+int thetaScaled, angle, distance;
 
 // PID
 double Setpoint, Input, Output;
-double Kp=3.3, Ki=2.5, Kd=0.7;
+double Kp=2.25, Ki=0.7, Kd=1.8;
+//double Kp=3.4, Ki=0.7, Kd=4.0;
+double Kp2=2.25, Ki2=0.7, Kd2=1.8;
 PID pid(&Input, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
-
-
-// COMMUNICATIONS + TELEMETRY
-RF24 radio(7, 8); // CE, CSN
-const byte address[6] = "00001";     //Byte of array representing the address. This is the address where we will send the data. This should be same on the receiving side.
-
-float voltage;
-int avgFilterCount = 0;
-float v[FILTER];
-
-boolean serialFlag = true;
-
-
-
-
-union float_byte {
-  float value;
-  byte b[4];
-};
-
-union short_byte {
-  short value;
-  byte b[2];
-};
-
-int wireCount = 0;
-
-
-union float_byte distanceTo;
-union short_byte headingReq;
-union float_byte currentLat;
-union float_byte currentLon;
-union short_byte currentSpeed;
-
-union short_byte currentTheta;
-union short_byte currentHeading;
-union float_byte currentVoltage;
-union short_byte currentRoll;
-union short_byte currentPitch;
-
-
-  
-
-// WIRE TEST END
-
-
-
-
-
-
-
 
 
 
 void setup() {
-
-  // INITIALIZE all union values
-  distanceTo.value = 0;
-  headingReq.value = 0;
-  currentLat.value = 0;
-  currentLon.value = 0;
-  currentSpeed.value = 0;
-  currentTheta.value = 0;
-  currentHeading.value = 0;
-  currentVoltage.value = 0;
-  currentRoll.value = 0;
-  currentPitch.value = 0;
-
-  // INITIALIZE FILTER ARRAY
-  for(int i = 0; i < FILTER; i++) {
-    v[i] = 0;
-  }
-
-  // RADIO INTIALIZATION
-  radio.begin();                  //Starting the Wireless communication
-  radio.openWritingPipe(address); //Setting the address where we will send the data
-  radio.setPALevel(RF24_PA_MIN);  //You can set it as minimum or maximum depending on the distance between the transmitter and receiver.
-  radio.stopListening();          //This sets the module as transmitter
-
-  if(serialFlag){
-    Serial.begin(SERIALBAUD);                                //Use only for debugging
-  }
+  Serial.begin(9600);                                //Use only for debugging
+  COM.begin(9600);
 
   Wire.begin();                                         //Start I2C as master
   Wire.setClock(400000);
@@ -252,26 +166,21 @@ void setup() {
   Debug_start_time = micros();                          // Controls data display rate to Serial Monitor
   Loop_start_time = micros();                           // Controls the Gyro refresh rate
 
-  if(serialFlag){
-      Serial.println("SETUP done");
-  }
+  Serial.println("SETUP done");
 
-  // CONTROLS INITIAL STATE
-  esc.attach(ESC_PIN);
-  esc.writeMicroseconds(1500);
-  delay(1000);
+
+  // CONTROLS
   steering.attach(SERVO_PIN);
   setSteering(0);
+  //esc.attach(ESC_PIN);
+  //esc.writeMicroseconds(1500);
+  //delay(2000);
 
   // INDICATE STARTUP
-  setSteering(-100);
+  /*esc.writeMicroseconds(1600);
   delay(500);
-  setSteering(0);
-  delay(500);
-  setSteering(100);
-  delay(500);
-  setSteering(0);
-  delay(500);
+  esc.writeMicroseconds(1400);
+  delay(500);*/
   
   // PID Setup
   Input = 0;
@@ -282,56 +191,28 @@ void setup() {
 }
 
 void loop() {
-  // 300 - 8.37V
-  // 271.2 - 7.51V
-  // =0.0299*x + -0.588
-  voltage = avgFilter((0.0299*analogRead(A3)) - 0.588); //avgFilter(((8.39/403.9)*analogRead(A3)) - 0.2928918049);
-  currentVoltage.value = voltage;
-  
 
-  // GET GPS DATA 
-
-  // (start) 4 byte, 2 byte, 4 byte, 4 byte, 2 byte (end)
-  // (start) (distanceTo) (headingReq) (lat) (lng) (mph) (end)
-  Wire.requestFrom(4, 16);
-  wireCount = 0;
-  while(12 < Wire.available())
-  {
-    distanceTo.b[wireCount] = Wire.read();
-    wireCount++;
+  // GET GPS DATA
+  COM.listen();
+  while (COM.available() > 0) {
+    text[i] = COM.read();
+    Serial.print(text[i]);
+    i+=1;
+    //delay(5);
   }
-  wireCount = 0;
-  while(10 < Wire.available())
-  {
-    headingReq.b[wireCount] = Wire.read();
-    wireCount++;
+  if(i != 0){
+    /*int tmpAngle = getAngle(text, Length);
+    if(tmpAngle <= 360 && tmpAngle >= 0){
+      angle = tmpAngle;
+    }
+    int tmpDistance = getDistance(text, Length);
+    if(tmpDistance >= 0 && tmpDistance <= 500) {
+      distance = tmpDistance;
+    }*/
+    angle = getAngle(text, Length);
+    distance = getDistance(text, Length);
   }
-  wireCount = 0;
-  while(6 < Wire.available())
-  {
-    currentLat.b[wireCount] = Wire.read();
-    wireCount++;
-  }
-  wireCount = 0;
-  while(2 < Wire.available())
-  {
-    currentLon.b[wireCount] = Wire.read();
-    wireCount++;
-  }
-  wireCount = 0;
-  while(0 < Wire.available())
-  {
-    currentSpeed.b[wireCount] = Wire.read();
-    wireCount++;
-  }
-
-
-  if(headingReq.value >= 0 && headingReq.value <= 360){
-    angle = headingReq.value;
-  }
-  if(distanceTo.value >= 0){
-    distance = distanceTo.value;
-  }
+  i = 0;
 
     ////////////////////////////////////////////
   //        PITCH & ROLL CALCULATIONS       //
@@ -387,8 +268,8 @@ void loop() {
   if (Gyro_synchronised)
   {
     // ----- Gyro & accel have been synchronised
-    Gyro_pitch = Gyro_pitch * 0.996 + Accel_pitch * 0.004;        //Correct the drift of the gyro pitch angle with the accelerometer pitch angle
-    Gyro_roll = Gyro_roll * 0.996 + Accel_roll * 0.004;           //Correct the drift of the gyro roll angle with the accelerometer roll angle
+    Gyro_pitch = Gyro_pitch * 0.9996 + Accel_pitch * 0.0004;        //Correct the drift of the gyro pitch angle with the accelerometer pitch angle
+    Gyro_roll = Gyro_roll * 0.9996 + Accel_roll * 0.0004;           //Correct the drift of the gyro roll angle with the accelerometer roll angle
   }
   else
   {
@@ -473,103 +354,41 @@ void loop() {
 
   // ----- Allow for under/overflow
   if (Heading < 0) Heading += 360;
-  if (Heading >= 360) Heading -= 360;  
+  if (Heading >= 360) Heading -= 360;
+
+
+  
   
 
   //TURNING CONTROL: Heading (current heading), angle (required heading)
-  if(angle - Heading <= -180) {
-    thetaScaled = (angle + 360) - Heading;
-  }else if(angle - Heading >= 180) {
-    thetaScaled = angle - (Heading + 360);
-  }else{
-    thetaScaled = angle - Heading;
+  if(Heading > 180 && angle <= 180) {
+    thetaScaled = Heading - (angle + 360);
+  } else if(angle > 180 && Heading <= 180) {
+    thetaScaled = (Heading + 360) - angle;
+  } else {
+    thetaScaled = Heading - angle;
   }
-
-
-
   thetaScaled *= (100.0/180.0);
+  thetaScaled = -thetaScaled;
+
+
+  /*if(abs(thetaScaled) > 15) {
+    pid.SetTunings(Kp, Ki, Kd);
+  }else{
+    pid.SetTunings(Kp2, Ki2, Kd2);
+  }*/
 
   // STEERING CONTROL
   Input = thetaScaled;
   pid.Compute();
   setSteering(Output);
-  //setSteeringBoat(Output);
 
+  Serial.print("\t\t\tTheta: " + String(thetaScaled) + "\tAngle: " + String(angle) + "\tDistance: " + String(distance));
+  
+  Serial.println();
 
-  currentTheta.value = short(thetaScaled);
-  currentHeading.value = short(Heading);
-  currentRoll.value = short(Gyro_roll_output);
-  currentPitch.value = short(Gyro_pitch_output);
-
-
-  // THROTTLE CONTROL
-  if(distance < WAYPOINT_THRESHOLD_STOP) {
-    esc.writeMicroseconds(STOP);
-    delay(1000);
-  }else{
-    esc.writeMicroseconds(FAST);
-  }
-
-  if(serialFlag){
-    Serial.print("\t\tTheta: " + String(thetaScaled) + "\tAngle: " + String(angle) + "\tDistance: " + String(distance) + "\tVoltage: " + String(voltage) + "\tLat: " + String(currentLat.value) + "\tLon: " + String(currentLon.value) + "\tSpeed: " + String(currentSpeed.value));
-    Serial.println();
-  }
-
-
-  // currentTheta (2) + headingReq (2) + currentHeading (2) + distanceTo (4) + roll (2) + pitch (2) + voltage (4) + currentLat (4) + currentLon (4) + currentSpeed (2)
-  // 2 + 2 + 2 + 4 + 2 + 2 + 4 + 4 + 4 + 2 = 28
-  byte text[28];
-  for(int i = 0; i < 2; i++) {
-    text[i] = currentTheta.b[i];
-  }
-  for(int i = 2; i < 4; i++) {
-    text[i] = headingReq.b[i - 2];
-  }
-  for(int i = 4; i < 6; i++) {
-    text[i] = currentHeading.b[i - 4];
-  }
-  for(int i = 6; i < 10; i++) {
-    text[i] = distanceTo.b[i - 6];
-  }
-  for(int i = 10; i < 12; i++) {
-    text[i] = currentRoll.b[i-10];
-  }
-  for(int i = 12; i < 14; i++) {
-    text[i] = currentPitch.b[i - 12];
-  }
-  for(int i = 14; i < 18; i++) {
-    text[i] = currentVoltage.b[i - 14];
-  }
-  for(int i = 18; i < 22; i++) {
-    text[i] = currentLat.b[i - 18];
-  }
-  for(int i = 22; i < 26; i++) {
-    text[i] = currentLon.b[i - 22];
-  }
-  for(int i = 26; i < 28; i++) {
-    text[i] = currentSpeed.b[i - 26];
-  }
-  radio.write(&text, sizeof(text));                  //Sending the message to receiver
 
 }
-
-
-float avgFilter(float volt) {
-  if(avgFilterCount >= FILTER){
-    avgFilterCount = 0;
-  }else{
-    v[avgFilterCount] = volt;
-    avgFilterCount++;
-  }
-
-  float sum = 0;
-  for(int i = 0; i < FILTER; i++) {
-    sum += v[i];
-  }
-
-  return sum/FILTER;
-}
-
 
 void setSteering(int val) {
   // steering center at 95
@@ -581,17 +400,32 @@ void setSteering(int val) {
   steering.write(pos);
 }
 
-void setSteeringBoat(int val) {
-  // steering center at 90
-  // range [45, 135]
-  // input parameter val is a value [-100, 100], with negative values turning left
-  val = (val < -100) ? -100: val;
-  val = (val > 100) ? 100: val;
-  int pos = (val/2.22) + 90;
-  steering.write(pos);
+int getAngle(char in[], int length) {
+    int j = 0;
+    String temp = "";
+    
+    while(in[j] != '\t' && in[j] != '\n' && in[j] != ' ' && j < length) {
+        temp += in[j];
+        j++;
+    }
+
+    return temp.toInt();
 }
 
+int getDistance(char in[], int length) {
+    int k = 0;
 
+    while(in[k] != '\t' && in[k] != ' ' && in[k] != '\n' && k < length) {
+      k++;
+    }
+
+    String temp = "";
+    while (k < length) {
+        temp += in[k];
+        k++;
+    }
+    return temp.toInt();
+}
 
 void configure_magnetometer()
 {
