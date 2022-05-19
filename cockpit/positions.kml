@@ -1,0 +1,25 @@
+<kml xmlns="http://www.opengis.net/kml/2.2"
+                   xmlns:gx="http://www.google.com/kml/ext/2.2"><Placemark>
+                                    <name>UGV</name>
+                                    <description>GPS Data from UGV</description>
+                                    <Point>
+                                      <coordinates>-121.9797300,37.3285790,0</coordinates>
+                                    </Point>
+                                    <Style id="mystyle">
+                                      <IconStyle>
+                                        <scale>1</scale>
+                                        <Icon>
+                                          <href>http://maps.google.com/mapfiles/kml/shapes/track.png</href>
+                                        </Icon>
+                                      </IconStyle>
+                                    </Style>
+                                    <LookAt>       
+                                      <longitude>-121.9797300</longitude>       
+                                      <latitude>37.3285790</latitude>       
+                                      <altitude>2000</altitude>
+                                      <altitudeMode>clampToGround</altitudeMode>
+                                      <tilt>45</tilt>
+                                      <range>15</range>
+                                      <heading>167</heading>
+                                    </LookAt>
+                                  </Placemark></kml>
